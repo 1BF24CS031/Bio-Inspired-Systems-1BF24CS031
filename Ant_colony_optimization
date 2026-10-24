@@ -1,0 +1,82 @@
+import numpy as np
+import random
+
+# Define 4 Traffic Phases and their current vehicle queue lengths
+phases = {
+    0: {"name": "N-S Straight", "queue": 25},
+    1: {"name": "E-W Straight", "queue": 40},
+    2: {"name": "N-S Left Turn", "queue": 15},
+    3: {"name": "E-W Left Turn", "queue": 10}
+}
+
+num_phases = len(phases)
+possible_durations = [15, 30, 45, 60]  # Green light durations in seconds
+num_durations = len(possible_durations)
+
+# Pheromone matrix: row = phase index, col = duration index
+pheromones = np.ones((num_phases, num_durations))
+evaporation_rate = 0.1
+alpha = 1.0  # Pheromone importance
+beta = 2.0   # Heuristic (queue-based green time requirement) importance
+
+def calculate_delay(phase_id, duration):
+    """
+    Evaluates delay: insufficient green time for large queues increases delay,
+    while excessively long green time with empty queues wastes time.
+    """
+    queue = phases[phase_id]["queue"]
+    cleared_vehicles = duration * 0.5  # Assumes 0.5 vehicles cleared per second
+    remaining_queue = max(0, queue - cleared_vehicles)
+    wasted_green = max(0, cleared_vehicles - queue)
+    return (remaining_queue * 2.0) + (wasted_green * 0.5)
+
+def get_heuristic(phase_id, duration_idx):
+    # Heuristic favors durations matching the queue demand
+    delay = calculate_delay(phase_id, possible_durations[duration_idx])
+    return 1.0 / (delay + 1e-5)
+
+# ACO Optimization Loop
+for iteration in range(20):
+    colony_paths = []
+    colony_delays = []
+    
+    # Run 10 ants
+    for ant in range(10):
+        path = []
+        total_delay = 0
+        
+        for phase_id in range(num_phases):
+            # Calculate transition probabilities
+            phero = pheromones[phase_id] ** alpha
+            heuristic = np.array([get_heuristic(phase_id, d_idx) for d_idx in range(num_durations)]) ** beta
+            probabilities = phero * heuristic
+            probabilities /= np.sum(probabilities)
+            
+            # Choose duration index based on probability
+            chosen_idx = np.random.choice(num_durations, p=probabilities)
+            path.append(chosen_idx)
+            total_delay += calculate_delay(phase_id, possible_durations[chosen_idx])
+            
+        colony_paths.append(path)
+        colony_delays.append(total_delay)
+        
+    # Pheromone Evaporation
+    pheromones *= (1 - evaporation_rate)
+    
+    # Update Pheromones based on performance (less delay = more pheromone)
+    for path, delay in zip(colony_paths, colony_delays):
+        deposit = 100.0 / (delay + 1e-5)
+        for phase_id, duration_idx in enumerate(path):
+            pheromones[phase_id, duration_idx] += deposit
+
+# Select the best phase scheduling plan
+best_ant_idx = np.argmin(colony_delays)
+best_schedule_idx = colony_paths[best_ant_idx]
+
+print("--- ACO Traffic Control Recommendation ---")
+for phase_id, dur_idx in enumerate(best_schedule_idx):
+    phase_name = phases[phase_id]["name"]
+    queue_size = phases[phase_id]["queue"]
+    allocated_time = possible_durations[dur_idx]
+    print(f"{phase_name} (Queue: {queue_size} vehicles) -> Allocated Green: {allocated_time}s")
+print(f"Estimated Total System Delay Score: {colony_delays[best_ant_idx]:.2f}")
