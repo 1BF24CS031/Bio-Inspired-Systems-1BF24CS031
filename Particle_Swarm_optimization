@@ -1,0 +1,100 @@
+import numpy as np
+import random
+
+# 1. Define the parking lot database
+# Each parking lot has: Name, Distance (meters), Cost ($ per hour), and Available Spots
+parking_lots = {
+    0: {"name": "Lot A (Close & Expensive)", "distance": 100, "cost": 5.0, "spots": 15},
+    1: {"name": "Lot B (Moderate distance & Price)", "distance": 350, "cost": 3.0, "spots": 5},
+    2: {"name": "Lot C (Far & Cheap)", "distance": 800, "cost": 1.0, "spots": 40},
+    3: {"name": "Lot D (Very Close but Full)", "distance": 50, "cost": 6.0, "spots": 0},
+    4: {"name": "Lot E (Moderate distance, low spots)", "distance": 400, "cost": 2.5, "spots": 2}
+}
+
+# Driver Preferences (Weights totaling 1.0)
+ALPHA = 0.6  # Weight for distance preference
+BETA = 0.4   # Weight for cost preference
+
+# 2. Define the fitness function
+def fitness_function(lot_id):
+    """
+    Calculates the fitness score of a parking lot.
+    Lower score is better (minimization problem).
+    """
+    lot = parking_lots[lot_id]
+    
+    # Penalty if no spots are available
+    if lot["spots"] == 0:
+        return float('inf')
+    
+    # Normalize values for fair comparison (simple scaling)
+    normalized_distance = lot["distance"] / 1000.0  # scale relative to 1km
+    normalized_cost = lot["cost"] / 10.0            # scale relative to $10
+    
+    # Combined objective function
+    score = (ALPHA * normalized_distance) + (BETA * normalized_cost)
+    return score
+
+# 3. Define the Particle class representing potential solutions
+class Particle:
+    def __init__(self, num_lots):
+        # Initialize particle position randomly to one of the parking lot IDs
+        self.position = random.randint(0, num_lots - 1)
+        self.velocity = random.uniform(-1, 1)
+        self.best_position = self.position
+        self.best_fitness = fitness_function(self.position)
+
+    def update_position(self, num_lots):
+        # Update position based on velocity, keeping it within bounds
+        self.position = int(np.clip(round(self.position + self.velocity), 0, num_lots - 1))
+
+# 4. Define the PSO Algorithm Execution
+def run_pso_parking_guidance(num_particles=10, iterations=15):
+    num_lots = len(parking_lots)
+    particles = [Particle(num_lots) for _ in range(num_particles)]
+    
+    # Global best initialization
+    global_best_position = min(particles, key=lambda p: p.best_fitness).best_position
+    global_best_fitness = fitness_function(global_best_position)
+    
+    # Hyperparameters for PSO
+    w = 0.5   # Inertia weight
+    c1 = 1.5  # Cognitive coefficient (personal best influence)
+    c2 = 1.5  # Social coefficient (global best influence)
+    
+    for i in range(iterations):
+        for particle in particles:
+            # Calculate fitness
+            current_fitness = fitness_function(particle.position)
+            
+            # Update personal best
+            if current_fitness < particle.best_fitness:
+                particle.best_fitness = current_fitness
+                particle.best_position = particle.position
+                
+            # Update global best
+            if current_fitness < global_best_fitness:
+                global_best_fitness = current_fitness
+                global_best_position = particle.position
+                
+            # Update velocity
+            r1, r2 = random.random(), random.random()
+            cognitive = c1 * r1 * (particle.best_position - particle.position)
+            social = c2 * r2 * (global_best_position - particle.position)
+            particle.velocity = w * particle.velocity + cognitive + social
+            
+            # Update position
+            particle.update_position(num_lots)
+            
+    return global_best_position, global_best_fitness
+
+# 5. Execute the system
+best_lot_id, score = run_pso_parking_guidance()
+optimal_lot = parking_lots[best_lot_id]
+
+print("--- PSO Recommendation Result ---")
+print(f"Recommended Parking Lot: {optimal_lot['name']}")
+print(f"Distance: {optimal_lot['distance']} meters")
+print(f"Cost: ${optimal_lot['cost']}/hr")
+print(f"Available Spots: {optimal_lot['spots']}")
+print(f"Fitness Score (lower is better): {score:.4f}")
